@@ -2,65 +2,104 @@
 pragma solidity ^0.8.20;
 
 interface IERC20 {
-    function transferFrom(address sender, address recipient, uint256 amount) external returns (bool);
     function transfer(address recipient, uint256 amount) external returns (bool);
+    function transferFrom(address sender, address recipient, uint256 amount) external returns (bool);
+    function balanceOf(address account) external view returns (uint256);
 }
 
-contract MetaPlayXStaking {
-    IERC20 public immutable metaPlayXToken;
+contract TokenStaking {
+    IERC20 public immutable stakingToken;
     address public owner;
 
-    struct StakeInfo {
-        uint256 amount;
-        uint256 timestamp;
-    }
+    uint256 public rewardRate; // Reward tokens per second
+    uint256 public lastUpdateTime;
+    uint256 public rewardPerTokenStored;
 
-    mapping(address => StakeInfo) public stakes;
+    mapping(address => uint256) public userStakeBalance;
+    mapping(address => uint256) public userRewardPerTokenPaid;
+    mapping(address => uint256) public rewards;
+
+    uint256 public totalStaked;
 
     event Staked(address indexed user, uint256 amount);
-    event Unstaked(address indexed user, uint256 amount);
+    event Withdrawn(address indexed user, uint256 amount);
+    event RewardPaid(address indexed user, uint256 reward);
 
     modifier onlyOwner() {
-        require(msg.sender == owner, "Only owner can call");
+        require(msg.sender == owner, "Not owner");
         _;
     }
 
-    constructor(address _metaPlayXTokenAddress) {
-        require(_metaPlayXTokenAddress != address(0), "Invalid token address");
-        metaPlayXToken = IERC20(_metaPlayXTokenAddress);
+    modifier updateReward(address account) {
+        rewardPerTokenStored = rewardPerToken();
+        lastUpdateTime = block.timestamp;
+        if (account != address(0)) {
+            rewards[account] = earned(account);
+            userRewardPerTokenPaid[account] = rewardPerTokenStored;
+        }
+        _;
+    }
+
+    constructor(address _stakingToken) {
+        stakingToken = IERC20(_stakingToken);
         owner = msg.sender;
+        rewardRate = 0; // initially no rewards
     }
 
-    function stake(uint256 _amount) external {
-        require(_amount > 0, "Cannot stake 0");
-        
-        // Transfer MetaPlayX tokens from user to contract
-        bool success = metaPlayXToken.transferFrom(msg.sender, address(this), _amount);
-        require(success, "Token transfer failed");
-
-        stakes[msg.sender].amount += _amount;
-        stakes[msg.sender].timestamp = block.timestamp;
-
-        emit Staked(msg.sender, _amount);
+    function rewardPerToken() public view returns (uint256) {
+        if (totalStaked == 0) {
+            return rewardPerTokenStored;
+        }
+        return rewardPerTokenStored + (rewardRate * (block.timestamp - lastUpdateTime) * 1e18 / totalStaked);
     }
 
-    function unstake(uint256 _amount) external {
-        require(_amount > 0, "Cannot unstake 0");
-        require(stakes[msg.sender].amount >= _amount, "Not enough staked");
-
-        stakes[msg.sender].amount -= _amount;
-
-        bool success = metaPlayXToken.transfer(msg.sender, _amount);
-        require(success, "Token transfer failed");
-
-        emit Unstaked(msg.sender, _amount);
+    function earned(address account) public view returns (uint256) {
+        return (userStakeBalance[account] * (rewardPerToken() - userRewardPerTokenPaid[account])) / 1e18 + rewards[account];
     }
 
-    function getStakedAmount(address _user) external view returns (uint256) {
-        return stakes[_user].amount;
+    function stake(uint256 amount) external updateReward(msg.sender) {
+        require(amount > 0, "Cannot stake 0");
+        totalStaked += amount;
+        userStakeBalance[msg.sender] += amount;
+        require(stakingToken.transferFrom(msg.sender, address(this), amount), "Transfer failed");
+        emit Staked(msg.sender, amount);
     }
 
-    function getStakeTimestamp(address _user) external view returns (uint256) {
-        return stakes[_user].timestamp;
+    function withdraw(uint256 amount) public updateReward(msg.sender) {
+        require(amount > 0, "Cannot withdraw 0");
+        require(userStakeBalance[msg.sender] >= amount, "Insufficient balance");
+        totalStaked -= amount;
+        userStakeBalance[msg.sender] -= amount;
+        require(stakingToken.transfer(msg.sender, amount), "Transfer failed");
+        emit Withdrawn(msg.sender, amount);
+    }
+
+    function claimRewards() public updateReward(msg.sender) {
+        uint256 reward = rewards[msg.sender];
+        if (reward > 0) {
+            rewards[msg.sender] = 0;
+            require(stakingToken.transfer(msg.sender, reward), "Reward transfer failed");
+            emit RewardPaid(msg.sender, reward);
+        }
+    }
+
+    function exit() external {
+        withdraw(userStakeBalance[msg.sender]);
+        claimRewards();
+    }
+
+    // Admin functions
+    function setRewardRate(uint256 _rewardRate) external onlyOwner updateReward(address(0)) {
+        rewardRate = _rewardRate;
+    }
+
+    function recoverERC20(address tokenAddress, uint256 tokenAmount) external onlyOwner {
+        require(tokenAddress != address(stakingToken), "Cannot recover staking token");
+        IERC20(tokenAddress).transfer(owner, tokenAmount);
+    }
+
+    function transferOwnership(address newOwner) external onlyOwner {
+        require(newOwner != address(0), "Zero address");
+        owner = newOwner;
     }
 }
