@@ -1,28 +1,107 @@
-REMIX DEFAULT WORKSPACE
+Social Restaking Pools (Audio DAOs)
+struct AudioDAO {
+    uint256 daoId;
+    address creator;
+    string name;
+    address[] members;
+    uint256 totalStaked;
+    mapping(address => uint256) memberStakes;
+    uint256 yield;
+}
+mapping(uint256 => AudioDAO) public audioDAOs;
 
-Remix default workspace is present when:
-i. Remix loads for the very first time 
-ii. A new workspace is created with 'Default' template
-iii. There are no files existing in the File Explorer
+b) Cross-Chain Staking & Dynamic Routing
+struct StakeRoute {
+    address user;
+    uint256 amount;
+    string originChain;
+    string destinationChain;
+    address creator;
+    uint256 timestamp;
+    uint256 estimatedYield;
+}
+mapping(address => StakeRoute[]) public stakeRoutes;
+event StakeRouted(address indexed user, string fromChain, string toChain, uint256 amount);
 
-This workspace contains 3 directories:
+c) Viral Audio Bounties
+struct AudioBounty {
+    uint256 bountyId;
+    address creator;
+    uint256 totalPool;
+    uint256 milestone; // e.g., number of listens or shares
+    uint256 currentProgress;
+    bool isActive;
+    mapping(address => bool) hasClaimed;
+    address[] eligibleListeners;
+}
+mapping(uint256 => AudioBounty) public bounties;
 
-1. 'contracts': Holds three contracts with increasing levels of complexity.
-2. 'scripts': Contains four typescript files to deploy a contract. It is explained below.
-3. 'tests': Contains one Solidity test file for 'Ballot' contract & one JS test file for 'Storage' contract.
+d) AI-Generated Restake Suggestions
+(Smart contracts don’t handle AI logic directly, but a stub can store history)
+struct ListeningHistory {
+    address user;
+    address[] listenedCreators;
+    uint256[] listenTimestamps;
+    mapping(address => uint256) stakeHistory;
+}
+mapping(address => ListeningHistory) public histories;
 
-SCRIPTS
+e) Restake Yield From Creator to Creator
+struct CreatorRestake {
+    address fromCreator;
+    address toCreator;
+    uint256 amount;
+    address user;
+    uint256 timestamp;
+}
+event RestakePerformed(address user, address fromCreator, address toCreator, uint256 amount);
+mapping(address => CreatorRestake[]) public restakeLogs;
 
-The 'scripts' folder has four typescript files which help to deploy the 'Storage' contract using 'web3.js' and 'ethers.js' libraries.
+ 2) BACKEND STRUCTURE 
+a) Social Restaking Pools (Audio DAOs)
+Database Tables / Collections:
+audio_daos: { dao_id, name, creator, total_staked, yield }
+dao_members: { dao_id, user_id, stake_amount }
+Backend Services:
+DAO Creation API
+Join/Leave DAO API
+Aggregate pool yield & distribute rewards
+Stake within DAO
 
-For the deployment of any other contract, just update the contract's name from 'Storage' to the desired contract and provide constructor arguments accordingly 
-in the file `deploy_with_ethers.ts` or  `deploy_with_web3.ts`
+b) Cross-Chain Staking & Dynamic Routing
+Database:
+stake_routes: { user_id, amount, from_chain, to_chain, creator_id, est_yield, status }
+Backend Services:
+Cross-chain bridge interaction 
+Dynamic path optimization engine (yield estimator)
+Route management queue (Redis for queues, workers for execution)
 
-In the 'tests' folder there is a script containing Mocha-Chai unit tests for 'Storage' contract.
+c) Viral Audio Bounties
+Database:
+audio_bounties: { bounty_id, creator_id, pool_amount, milestone_type, milestone_target, current_progress, is_active }
+bounty_claims: { user_id, bounty_id, claimed_at }
 
-To run a script, right click on file name in the file explorer and click 'Run'. Remember, Solidity file must already be compiled.
-Output from script will appear in remix terminal.
+Backend Services:
+Engagement Tracker (listens, shares via webhooks/API calls)
+Bounty Distribution Engine (triggers payouts on milestone completion)
+Viral Analytics (who contributed most to virality)
 
-Please note, require/import is supported in a limited manner for Remix supported modules.
-For now, modules supported by Remix are ethers, web3, swarmgw, chai, multihashes, remix and hardhat only for hardhat.ethers object/plugin.
-For unsupported modules, an error like this will be thrown: '<module_name> module require is not supported by Remix IDE' will be shown.
+d) AI-Generated Restake Suggestions
+Database:
+user_behavior_logs: { user_id, creator_id, interaction_type, timestamp }
+ai_recommendations: { user_id, recommended_creator_ids[] }
+
+Backend Services:
+Listening/Staking analytics pipeline
+AI model service (could be separate Python ML microservice using collaborative filtering or Transformers)
+API for real-time suggestions
+
+e) Restake Yield From Creator to Creator
+Database:
+restake_logs: { user_id, from_creator_id, to_creator_id, amount, timestamp }
+
+Backend Services:
+
+Restake Flow Engine (validates source yield balance, redirects to destination creator)
+Notification Service (in-app notification when restake happens)
+Scheduled auto-restake rules (user-defined triggers)
